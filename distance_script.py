@@ -175,7 +175,8 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
 
         # 记录每张图片所有目标结果的列表
         frame_log = []
-
+        # 记录图片里每个目标得分的列表
+        score_list = []
         for i, det in enumerate(pred):  # detections per image
             if webcam:
                 # 如果输入源是webcam（网页）则batch_size>=1 取出dataset中的一张图片
@@ -235,8 +236,7 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
                     box_size = get_box_size((xywh))
 
                     # 记录当前这个种类的特征
-                    # frame_log.append({"cls": cls, "conf": conf, "loc": xywh, "coffset": coffset, "box_size": box_size})
-                    frame_log.append({"cls": cls, "conf": conf})
+                    frame_log.append({"cls": names[int(cls)], "conf": conf, "loc": xywh, "coffset": coffset, "box_size": box_size})
 
                     if save_txt:  # Write to file(txt)
                         line = (cls, conf, *xyxy, coffset, box_size) if save_conf else (cls, *xyxy, coffset, box_size)  # label format
@@ -254,6 +254,13 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
 
             # print('\n','FRAME', frame_log)
             # 这里frame_log（列表）已经储存了当前帧的所有目标信息，其中每一个元素都是一个字典，记录了一个目标的信息
+            for obj in frame_log:
+                score = - obj["coffset"] + obj["box_size"]
+                obj["score"] = score
+                score_list.append(score)
+            target_idx = score_list.index(max(score_list))
+            print("Frame target is:", frame_log[target_idx]["cls"])
+
             stream_log.append(frame_log)
             # 打印前向传播 + NMS 花费的时间
             print(f'{s}Done. ({t2 - t1:.3f}s)')
@@ -285,7 +292,7 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
                     vid_writer.write(im0)
 
         print('last frame last obj:', stream_log[-1][-1])
-        print('stream length:', len(stream_log))
+        # print('stream length:', len(stream_log))
 
     # ===================================== 6、推理结束, 保存结果, 打印信息 =====================================
     # 保存预测的label信息 xywh等   save_txt
