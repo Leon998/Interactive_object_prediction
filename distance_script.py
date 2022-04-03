@@ -22,6 +22,7 @@ from utils.myutils import *
 
 Box_thres = [0.7]
 
+
 @torch.no_grad()
 def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.pt
         source='data/images/',  # 测试数据文件(图片或视频)的保存路径 默认data/images
@@ -136,6 +137,9 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
 
     # stream_log：记录视频流每一帧累积信息的
     stream_log = []
+    class_score = []
+    for i in range(80):
+        class_score.append([])
 
     for path, img, im0s, vid_cap in dataset:
         # 5.1、处理每一张图片的格式
@@ -235,11 +239,19 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
                     # 只获得框大小
                     box_size = get_box_size((xywh))
 
+                    # 计分score
+                    score = - coffset + box_size
                     # 记录当前这个种类的特征
-                    frame_log.append({"cls": names[int(cls)], "conf": conf, "loc": xywh, "coffset": coffset, "box_size": box_size})
+                    frame_log.append(
+                        {"cls": names[int(cls)], "conf": conf, "loc": xywh, "coffset": coffset, "box_size": box_size,
+                         "score": score})
+                    score_list.append(score)
+                    # 每次直接对应int(cls)的那个class_score进行append操作
+                    class_score[int(cls)].append(score)
 
                     if save_txt:  # Write to file(txt)
-                        line = (cls, conf, *xyxy, coffset, box_size) if save_conf else (cls, *xyxy, coffset, box_size)  # label format
+                        line = (cls, conf, *xyxy, coffset, box_size) if save_conf else (
+                        cls, *xyxy, coffset, box_size)  # label format
                         with open(txt_path + '.txt', 'a') as f:
                             f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
@@ -252,16 +264,22 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
                             # 如果需要就将预测到的目标剪切出来 保存成图片 保存在save_dir/crops下
                             save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
 
-            # print('\n','FRAME', frame_log)
-            # 这里frame_log（列表）已经储存了当前帧的所有目标信息，其中每一个元素都是一个字典，记录了一个目标的信息
-            for obj in frame_log:
-                score = - obj["coffset"] + obj["box_size"]
-                obj["score"] = score
-                score_list.append(score)
-            target_idx = score_list.index(max(score_list))
-            print("Frame target is:", frame_log[target_idx]["cls"])
+                target_idx = score_list.index(max(score_list))
+                print("Frame target is:", frame_log[target_idx]["cls"])
+                stream_log.append(frame_log)
+                print('last frame last obj:', stream_log[-1][-1])
 
-            stream_log.append(frame_log)
+            else:
+                print("No target")
+                stream_log.append(["None"])
+
+
+
+            print('stream length:', len(stream_log))
+            print(class_score[39])
+            print(class_score[41])
+            print(class_score[44])
+
             # 打印前向传播 + NMS 花费的时间
             print(f'{s}Done. ({t2 - t1:.3f}s)')
 
@@ -290,9 +308,6 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
                             save_path += '.mp4'
                         vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer.write(im0)
-
-        print('last frame last obj:', stream_log[-1][-1])
-        # print('stream length:', len(stream_log))
 
     # ===================================== 6、推理结束, 保存结果, 打印信息 =====================================
     # 保存预测的label信息 xywh等   save_txt
@@ -338,7 +353,7 @@ def parse_opt():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='weights/yolov5m.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='data/images/', help='file/dir/URL/glob, 0 for webcam')
+    parser.add_argument('--source', type=str, default='data/images', help='file/dir/URL/glob, 0 for webcam')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
