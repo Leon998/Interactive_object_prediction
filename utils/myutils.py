@@ -1,4 +1,6 @@
 import torch
+import cv2
+import numpy as np
 
 
 def get_centraloffset(xyxy, gn, normalize=False):
@@ -42,6 +44,27 @@ def get_box_size(xywh):
     """
     size = max(xywh[2], xywh[3])
     return size
+
+
+def plot_target_box(x, im, color=(128, 128, 128), label=None, line_thickness=-1):
+    """一般会用在detect.py中在nms之后变量每一个预测框，再将每个预测框画在原图上
+    使用opencv在原图im上画一个bounding box
+    :params x: 预测得到的bounding box  [x1 y1 x2 y2]
+    :params im: 原图 要将bounding box画在这个图上  array
+    :params color: bounding box线的颜色
+    :params labels: 标签上的框框信息  类别 + score
+    :params line_thickness: bounding box的线宽，-1表示框框为实心
+    """
+    # check im内存是否连续
+    assert im.data.contiguous, 'Image not contiguous. Apply np.ascontiguousarray(im) to plot_on_box() input image.'
+    c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
+    # cv2.rectangle: 在im上画出框框   c1: start_point(x1, y1)  c2: end_point(x2, y2)
+    # 注意: 这里的c1+c2可以是左上角+右下角  也可以是左下角+右上角都可以
+    blk = np.zeros(im.shape, np.uint8)
+
+    cv2.rectangle(blk, c1, c2, color, -1)  # 注意在 blk的基础上进行绘制；
+    picture = cv2.addWeighted(im, 1.0, blk, 0.5, 1)
+    return picture
 
 def CLS(result_log):
     """
