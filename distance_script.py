@@ -2,6 +2,7 @@ import argparse  # python的命令行解析的标准模块  可以让我们直�
 import sys  # sys系统模块 包含了与Python解释器和它的环境有关的函数
 import time  # 时间模块 更底层
 from pathlib import Path  # Path将str转换为Path对象 使字符串路径易于操作的模块
+import numpy as np
 
 import cv2  # opencv模块
 import torch  # pytorch模块
@@ -15,12 +16,10 @@ sys.path.append(FILE.parents[0].as_posix())  # add yolov5-U/ to path
 from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages
 from utils.general import check_img_size, check_requirements, check_imshow, colorstr, non_max_suppression, \
-    apply_classifier, scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path, save_one_box
+    apply_classifier, scale_coords, xyxy2xywh, xywh2xyxy, strip_optimizer, set_logging, increment_path, save_one_box
 from utils.plots import colors, plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized, model_info, prune
 from utils.myutils import *
-
-Box_thres = [0.7]
 
 
 @torch.no_grad()
@@ -136,12 +135,17 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
     # vid_cap: 当读取图片时为None, 读取视频时为视频源
 
     # stream_log：记录视频流每一帧累积信息的
+    # class_score_lod: 80×n维的列表，表示80个类别的得分记录
     stream_log = []
-    class_score = []
-    for i in range(80):
-        class_score.append([])
+    Box_thres = [0.6 for idx in range(80)]
+    class_score_log = np.zeros((80, 1))
+    new_frame = np.zeros(80)
+    frame_idx = 0
 
     for path, img, im0s, vid_cap in dataset:
+        # 分数记录
+        if frame_idx >= 1:
+            class_score_log = np.column_stack((class_score_log,new_frame))
         # 5.1、处理每一张图片的格式
         img = torch.from_numpy(img).to(device)  # numpy array to tensor and device
         img = img.half() if half else img.float()  # 半精度训练 uint8 to fp16/32
@@ -234,51 +238,39 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
                     coffset2 = get_centeroffset_2version(xywh, normalize=True)
 
                     # 获取阈值比
-                    thres = Box_thres[0]
-                    box_thres_rate = get_box_thres_rate(xywh, thres)
+                    thres = Box_thres[int(cls)]
+                    box_rate = get_box_thres_rate(xywh, thres)
                     # 只获得框大小
                     box_size = get_box_size((xywh))
 
                     # 计分score
-                    score = - coffset + box_size
+                    score = box_rate / coffset
                     # 记录当前这个种类的特征
                     frame_log.append(
-                        {"cls": names[int(cls)], "conf": conf, "loc": xywh, "coffset": coffset, "box_size": box_size,
+                        {"cls": names[int(cls)], "conf": conf, "loc": xyxy, "coffset": coffset, "box_rate": box_rate,
                          "score": score})
                     score_list.append(score)
-                    # 每次直接对应int(cls)的那个class_score进行append操作
-                    class_score[int(cls)].append(score)
-
-                    if save_txt:  # Write to file(txt)
-                        line = (cls, conf, *xyxy, coffset, box_size) if save_conf else (
-                        cls, *xyxy, coffset, box_size)  # label format
-                        with open(txt_path + '.txt', 'a') as f:
-                            f.write(('%g ' * len(line)).rstrip() % line + '\n')
+                    # 每次直接对应int(cls)的那个class_score_log进行append操作
+                    if score >= class_score_log[int(cls), :][frame_idx]:
+                        class_score_log[int(cls), :][frame_idx] = score
 
                     # 在原图上画框 + 将预测到的目标剪切出来 保存成图片 保存在save_dir/crops下
                     if save_img or save_crop or view_img:
                         c = int(cls)  # integer class
                         label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
                         plot_one_box(xyxy, im0, label=label, color=colors(c, True), line_thickness=line_thickness)
-                        if save_crop:
-                            # 如果需要就将预测到的目标剪切出来 保存成图片 保存在save_dir/crops下
-                            save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
 
                 target_idx = score_list.index(max(score_list))
+                target = frame_log[target_idx]
+                target_xyxy = target["loc"]
+                im0 = plot_target_box(target_xyxy, im0, label="Target", color=colors(0, True), line_thickness=-1)
                 print("Frame target is:", frame_log[target_idx]["cls"])
                 stream_log.append(frame_log)
-                print('last frame last obj:', stream_log[-1][-1])
 
             else:
                 print("No target")
                 stream_log.append(["None"])
 
-
-
-            print('stream length:', len(stream_log))
-            print(class_score[39])
-            print(class_score[41])
-            print(class_score[44])
 
             # 打印前向传播 + NMS 花费的时间
             print(f'{s}Done. ({t2 - t1:.3f}s)')
@@ -308,6 +300,8 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
                             save_path += '.mp4'
                         vid_writer = cv2.VideoWriter(save_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (w, h))
                     vid_writer.write(im0)
+        frame_idx += 1
+        # 至此结束当前帧
 
     # ===================================== 6、推理结束, 保存结果, 打印信息 =====================================
     # 保存预测的label信息 xywh等   save_txt
@@ -321,7 +315,30 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
 
     # 打印预测的总时间
 
+
+    print(frame_idx)
+    print('39_bottle:', class_score_log[39, :])
+    print('41_cup:', class_score_log[41, :])
+    print('44_spoon:', class_score_log[44, :])
     print(f'Done. ({time.time() - t0:.3f}s)')
+
+    filename = open('runs/bottle_score.txt', 'w')
+    for value in class_score_log[39, :]:
+        value = value.item()
+        filename.write(str(value) + '\n')
+    filename.close()
+
+    filename = open('runs/cup_score.txt', 'w')
+    for value in class_score_log[41, :]:
+        value = value.item()
+        filename.write(str(value) + '\n')
+    filename.close()
+
+    filename = open('runs/spoon_score.txt', 'w')
+    for value in class_score_log[44, :]:
+        value = value.item()
+        filename.write(str(value) + '\n')
+    filename.close()
 
 
 def parse_opt():
