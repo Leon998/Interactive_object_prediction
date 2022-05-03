@@ -23,7 +23,7 @@ from utils.myutils import *
 
 
 @torch.no_grad()
-def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.pt
+def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.pt
         source='data/images/',  # 测试数据文件(图片或视频)的保存路径 默认data/images
         imgsz=640,  # 输入图片的大小 默认640(pixels)
         conf_thres=0.25,  # object置信度阈值 默认0.25  用在nms中
@@ -45,9 +45,9 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
         line_thickness=3,  # bounding box thickness (pixels)   画框的框框的线宽  默认是 3
         hide_labels=False,  # 画出的框框是否需要隐藏label信息 默认False
         hide_conf=False,  # 画出的框框是否需要隐藏conf信息 默认False
-        half=False,  # 是否使用半精度 Float16 推理 可以缩短推理时间 但是默认是False
+        half=True,  # 是否使用半精度 Float16 推理 可以缩短推理时间 但是默认是False
         prune_model=False,  # 是否使用模型剪枝 进行推理加速
-        fuse=False,  # 是否使用conv + bn融合技术 进行推理加速
+        fuse=True,  # 是否使用conv + bn融合技术 进行推理加速
         ):
     # ===================================== 1、初始化一些配置 =====================================
     # 是否保存预测后的图片 默认nosave=False 所以只要传入的文件地址不是以.txt结尾 就都是要保存预测后的图片的
@@ -232,28 +232,24 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
                     # 将每个图片的预测信息分别存入save_dir/labels下的xxx.txt中 每行: class_id+score+xywh
                     # 获得每个目标的中心偏移量coffset
                     coffset = get_centraloffset(xyxy, gn, normalize=True)
-
                     # 将xyxy(左上角 + 右下角)格式转换为xywh(中心的 + 宽高)格式 并除以gn(whwh)做归一化 转为list再保存
                     xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                     coffset2 = get_centeroffset_2version(xywh, normalize=True)
-
                     # 获取阈值比
                     thres = Box_thres[int(cls)]
                     box_rate = get_box_thres_rate(xywh, thres)
                     # 只获得框大小
                     box_size = get_box_size((xywh))
-
                     # 计分score
                     score = box_rate / coffset
                     # 记录当前这个种类的特征
                     frame_log.append(
                         {"cls": names[int(cls)], "conf": conf, "loc": xyxy, "coffset": coffset, "box_rate": box_rate,
-                         "score": score})
+                         "box_size": box_size, "score": score})
                     score_list.append(score)
                     # 每次直接对应int(cls)的那个class_score_log进行append操作
                     if score >= class_score_log[int(cls), :][frame_idx]:
                         class_score_log[int(cls), :][frame_idx] = score
-
                     # 在原图上画框 + 将预测到的目标剪切出来 保存成图片 保存在save_dir/crops下
                     if save_img or save_crop or view_img:
                         c = int(cls)  # integer class
@@ -262,9 +258,13 @@ def run(weights='weights/yolov5s.pt',  # 权重文件地址 默认 weights/best.
 
                 target_idx = score_list.index(max(score_list))
                 target = frame_log[target_idx]
-                target_xyxy = target["loc"]
-                im0 = plot_target_box(target_xyxy, im0, label="Target", color=colors(0, True), line_thickness=-1)
-                print("Frame target is:", frame_log[target_idx]["cls"])
+                if target["box_size"] > 0.6:
+                    im0 = im0s  # raw image
+                    print("Pre-shaping")
+                else:
+                    target_xyxy = target["loc"]
+                    im0 = plot_target_box(target_xyxy, im0, label="Target", color=colors(0, True), line_thickness=-1)
+                    print("Frame target is:", frame_log[target_idx]["cls"])
                 stream_log.append(frame_log)
 
             else:
