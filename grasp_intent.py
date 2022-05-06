@@ -113,6 +113,8 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
     class_score_log = np.zeros((80, 1))
     new_frame = np.zeros(80)
     frame_idx = 0
+    grasping_flag = [False, "None"]
+
 
     for path, img, im0s, vid_cap in dataset:
         # 分数记录
@@ -191,15 +193,23 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                 im1 = info_on_img(im0, gn, zoom=[0.45, 0.9], label="Box_size: " + str(round(target["box_size"], 3)))
                 im1 = info_on_img(im1, gn, zoom=[0.45, 0.95], label="Box_rate: " + str(round(target["box_rate"], 3)))
                 im1 = info_on_img(im1, gn, zoom=[0.75, 0.95], label="Score: " + str(round(target["score"].item(), 3)))
-                if target["box_rate"] > 1.5:
-                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + target["cls"])
+                grasping_flag = check_grasp(target["box_rate"], target["cls"], grasping_flag)
+                if grasping_flag[0]:
+                # if target["box_rate"] > 1.5:
+                    # 判断是否在grasping
+                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + grasping_flag[1])
                 else:
                     im1 = plot_target_box(target_xyxy, im0, color=colors(0, True), line_thickness=2)
                     im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Targeting: " + target["cls"])
                 stream_log.append(frame_log)
 
             else:
-                im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="No Target")
+                # 如果没有目标
+                grasping_flag = check_grasp_null(grasping_flag)
+                if grasping_flag[0]:
+                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + grasping_flag[1])
+                else:
+                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="No Target")
                 stream_log.append(["None"])
 
             im1 = text_on_img(im1, gn, zoom=[0.05, 0.1], color=[0,0,0], label="Frame " + str(frame_idx))
@@ -302,7 +312,7 @@ def parse_opt():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='weights/yolov5m.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='data/images/3obj', help='file/dir/URL/glob, 0 for webcam')
+    parser.add_argument('--source', type=str, default='data/images/2obj', help='file/dir/URL/glob, 0 for webcam')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
