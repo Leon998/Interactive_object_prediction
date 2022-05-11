@@ -109,11 +109,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
     # stream_log：记录视频流每一帧累积信息的
     # class_score_lod: 80×n维的列表，表示80个类别的得分记录
     stream_log = []
-    Box_thres = [0.8 for idx in range(80)]
-    Box_thres[39] = 0.8
-    Box_thres[41] = 0.7
-    Box_thres[44] = 0.65
-    Box_thres[64] = 0.5
+    Box_thres = [0.6 for idx in range(80)]
     class_score_log = np.zeros((80, 1))
     new_frame = np.zeros(80)
     frame_idx = 0
@@ -158,7 +154,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
             #  normalization gain gn = [w, h, w, h]  用于后面的归一化
             gn = torch.tensor(im0.shape)[[1, 0, 1, 0]]
             # imc: for save_crop 在save_crop中使用
-            im1 = im0
+            im1 = im0s
             # 以下if语句的意思是当前image里检测出了目标才执行
             if len(det):
                 # 将预测信息（相对img_size 640）映射回原图 img0 size
@@ -180,7 +176,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                     frame_log.append(
                         {"cls": names[int(cls)], "conf": conf, "loc": xyxy, "coffset": coffset, "box_rate": box_rate,
                          "box_size": box_size, "score": score})
-                    score_list.append(score)  # score_list每帧都更新
+                    score_list.append(score)
                     # 每次直接对应int(cls)的那个class_score_log进行append操作
                     if score >= class_score_log[int(cls), :][frame_idx]:
                         class_score_log[int(cls), :][frame_idx] = score
@@ -191,14 +187,15 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                         plot_one_box(xyxy, im0, label=label, color=colors(c, True), line_thickness=line_thickness)
 
                 # =====================================单个object检测结束================================= #
-                target_idx = score_list.index(max(score_list))  # 这一步可以修改成voting之类的方式
+                target_idx = score_list.index(max(score_list))
                 target = frame_log[target_idx]
                 target_xyxy = target["loc"]
-                im1 = info_on_img(im0, gn, zoom=[0.45, 0.9], label="Box_size: " + str(round(target["box_size"], 3)))
-                im1 = info_on_img(im1, gn, zoom=[0.45, 0.95], label="Box_rate: " + str(round(target["box_rate"], 3)))
-                im1 = info_on_img(im1, gn, zoom=[0.75, 0.95], label="Score: " + str(round(target["score"].item(), 3)))
+                # im1 = info_on_img(im0, gn, zoom=[0.45, 0.9], label="Box_size: " + str(round(target["box_size"], 3)))
+                # im1 = info_on_img(im1, gn, zoom=[0.45, 0.95], label="Box_rate: " + str(round(target["box_rate"], 3)))
+                im1 = info_on_img(im0s, gn, zoom=[0.75, 0.95], label="Score: " + str(round(target["score"].item(), 3)))
                 grasping_flag = check_grasp(target["box_rate"], target["cls"], grasping_flag)
                 if grasping_flag[0]:
+                # if target["box_rate"] > 1.5:
                     # 判断是否在grasping
                     im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + grasping_flag[1])
                 else:
@@ -265,13 +262,25 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
     print('39_bottle:', class_score_log[39, :])
     print('41_cup:', class_score_log[41, :])
     print('44_spoon:', class_score_log[44, :])
-    print('64_mouse:', class_score_log[64, :])
     print(f'Done. ({time.time() - t0:.3f}s)')
 
-    save_score('runs/bottle_score.txt', 39, class_score_log)
-    save_score('runs/cup_score.txt', 41, class_score_log)
-    save_score('runs/spoon_score.txt', 44, class_score_log)
-    save_score('runs/mouse_score.txt', 64, class_score_log)
+    filename = open('runs/bottle_score.txt', 'w')
+    for value in class_score_log[39, :]:
+        value = value.item()
+        filename.write(str(value) + '\n')
+    filename.close()
+
+    filename = open('runs/cup_score.txt', 'w')
+    for value in class_score_log[41, :]:
+        value = value.item()
+        filename.write(str(value) + '\n')
+    filename.close()
+
+    filename = open('runs/spoon_score.txt', 'w')
+    for value in class_score_log[44, :]:
+        value = value.item()
+        filename.write(str(value) + '\n')
+    filename.close()
 
 
 def parse_opt():
@@ -303,7 +312,7 @@ def parse_opt():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='weights/yolov5m.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='data/videos/510_3.mp4', help='file/dir/URL/glob, 0 for webcam')
+    parser.add_argument('--source', type=str, default='data/videos/2obj.mp4', help='file/dir/URL/glob, 0 for webcam')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
