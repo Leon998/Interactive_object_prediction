@@ -45,8 +45,34 @@ def get_box_size(xywh):
     size = max(xywh[2], xywh[3])
     return size
 
+def check_grasp(box_rate, cls, grasping_flag, x=1):
+    if grasping_flag[0]:  # 上一时刻是抓的状态
+        if cls == grasping_flag[1]:  # 如果还是要抓的目标
+            if box_rate > x:  # 还在接近
+                grasping_flag[0] = True
+            else:  # 已经离开了
+                grasping_flag[0] = False
+                grasping_flag[1] = "None"
+        else:  # 检测到了其他东西
+            grasping_flag[0] = True
+    else:  # 上一时刻不是抓取状态
+        if box_rate > x:  # 新的目标进入抓取状态
+            grasping_flag[0] = True
+            grasping_flag[1] = cls
+        else:  # 还在瞄准
+            grasping_flag[0] = False
+            grasping_flag[1] = "None"
+    return grasping_flag
 
-def plot_target_box(x, im, color=(128, 128, 128), label=None, line_thickness=-1):
+def check_grasp_null(grasping_flag):
+    if grasping_flag[0]:  # 上一时刻是抓的状态
+        grasping_flag[0] = True
+    else:  # 上一时刻不是抓取状态
+        grasping_flag[0] = False
+    return grasping_flag
+
+
+def plot_target_box(x, im, color=(128, 128, 128), label=None, line_thickness=2):
     """一般会用在detect.py中在nms之后变量每一个预测框，再将每个预测框画在原图上
     使用opencv在原图im上画一个bounding box
     :params x: 预测得到的bounding box  [x1 y1 x2 y2]
@@ -57,14 +83,41 @@ def plot_target_box(x, im, color=(128, 128, 128), label=None, line_thickness=-1)
     """
     # check im内存是否连续
     assert im.data.contiguous, 'Image not contiguous. Apply np.ascontiguousarray(im) to plot_on_box() input image.'
+    tl = line_thickness or round(0.002 * (im.shape[0] + im.shape[1]) / 2) + 1  # line/font thickness
+    # 这里在画高亮部分
     c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
     # cv2.rectangle: 在im上画出框框   c1: start_point(x1, y1)  c2: end_point(x2, y2)
     # 注意: 这里的c1+c2可以是左上角+右下角  也可以是左下角+右上角都可以
     blk = np.zeros(im.shape, np.uint8)
-
     cv2.rectangle(blk, c1, c2, color, -1)  # 注意在 blk的基础上进行绘制；
-    picture = cv2.addWeighted(im, 1.0, blk, 0.5, 1)
-    return picture
+    img = cv2.addWeighted(im, 1.0, blk, 0.5, 1)
+    return img
+
+def text_on_img(im, gn, zoom, color=[0,0,255], label=None, line_thickness=2):
+    assert im.data.contiguous, 'Image not contiguous. Apply np.ascontiguousarray(im) to plot_on_box() input image.'
+    tl = line_thickness or round(0.002 * (im.shape[0] + im.shape[1]) / 2) + 1  # line/font thickness
+    scale = int(gn[1]) / 666 + 0.2
+    tf = int(scale)  # label字体的线宽 font thickness
+    d1 = (int(gn[0] * zoom[0]), int(gn[1] * zoom[1]))
+    img = cv2.putText(im, label, (d1[0], d1[1]), 0, scale, color, thickness=tf + 1, lineType=cv2.LINE_AA)
+    return img
+
+def info_on_img(im, gn, zoom, color=[0,0,255], label=None, line_thickness=2):
+    assert im.data.contiguous, 'Image not contiguous. Apply np.ascontiguousarray(im) to plot_on_box() input image.'
+    tl = line_thickness or round(0.002 * (im.shape[0] + im.shape[1]) / 2) + 1  # line/font thickness
+    scale = int(gn[1]) / 666 + 0.2
+    tf = int(scale)  # label字体的线宽 font thickness
+    d1 = (int(gn[0] * zoom[0]), int(gn[1] * zoom[1]))
+    img = cv2.putText(im, label, (d1[0], d1[1]), 0, scale, color, thickness=tf + 1, lineType=cv2.LINE_AA)
+    return img
+
+def save_score(path, cls, class_score_log):
+    filename = open(path, 'w')
+    for value in class_score_log[cls, :]:
+        value = value.item()
+        filename.write(str(value) + '\n')
+    filename.close()
+    pass
 
 def CLS(result_log):
     """
