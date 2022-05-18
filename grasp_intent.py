@@ -48,6 +48,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
         half=True,  # 是否使用半精度 Float16 推理 可以缩短推理时间 但是默认是False
         prune_model=False,  # 是否使用模型剪枝 进行推理加速
         fuse=True,  # 是否使用conv + bn融合技术 进行推理加速
+        ground_truth='bottle',  # 目标的真实标签
         ):
     # ===================================== 1、初始化一些配置 =====================================
     # 是否保存预测后的图片 默认nosave=False 所以只要传入的文件地址不是以.txt结尾 就都是要保存预测后的图片的
@@ -109,15 +110,10 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
     # stream_log：记录视频流每一帧累积信息的
     # class_score_lod: 80×n维的列表，表示80个类别的得分记录
     stream_log = []
-    Box_thres = [0.8 for idx in range(80)]
-    Box_thres[39] = 0.8
-    Box_thres[41] = 0.7
-    Box_thres[44] = 0.65
-    Box_thres[64] = 0.5
     class_score_log = np.zeros((80, 1))
     new_frame = np.zeros(80)
     frame_idx = 0
-    grasping_flag = [False, "None"]
+    trigger_flag = [False, "None"]
 
 
     for path, img, im0s, vid_cap in dataset:
@@ -178,7 +174,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                     score = box_rate / coffset  # 计分score
                     # 记录当前这个种类的特征
                     frame_log.append(
-                        {"cls": names[int(cls)], "conf": conf, "loc": xyxy, "coffset": coffset, "box_rate": box_rate,
+                        {"cls": names[int(cls)], "conf": conf, "xyxy": xyxy, "xywh": xywh, "coffset": coffset, "box_rate": box_rate,
                          "box_size": box_size, "score": score})
                     score_list.append(score)  # score_list每帧都更新
                     # 每次直接对应int(cls)的那个class_score_log进行append操作
@@ -193,29 +189,33 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                 # =====================================单个object检测结束================================= #
                 target_idx = score_list.index(max(score_list))  # 这一步可以修改成voting之类的方式
                 target = frame_log[target_idx]
-                target_xyxy = target["loc"]
-                im1 = info_on_img(im0, gn, zoom=[0.45, 0.9], label="Box_size: " + str(round(target["box_size"], 3)))
-                im1 = info_on_img(im1, gn, zoom=[0.45, 0.95], label="Box_rate: " + str(round(target["box_rate"], 3)))
-                im1 = info_on_img(im1, gn, zoom=[0.75, 0.95], label="Score: " + str(round(target["score"].item(), 3)))
-                grasping_flag = check_grasp(target["box_rate"], target["cls"], grasping_flag)
-                if grasping_flag[0]:
-                    # 判断是否在grasping
-                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + grasping_flag[1])
+                target_xyxy = target["xyxy"]
+                im1 = info_on_img(im0, gn, zoom=[0.45, 0.9], label="Box_x_loc: " + str(round(target["xywh"][0], 3)))
+                im1 = info_on_img(im0, gn, zoom=[0.75, 0.9], label="Box_y_loc: " + str(round(target["xywh"][1], 3)))
+                im1 = info_on_img(im0, gn, zoom=[0.45, 0.95], label="Box_size: " + str(round(target["box_size"], 3)))
+                im1 = info_on_img(im1, gn, zoom=[0.75, 0.95], label="Box_rate: " + str(round(target["box_rate"], 3)))
+                im1 = info_on_img(im1, gn, zoom=[0.75, 0.85], label="Score: " + str(round(target["score"].item(), 3)))
+                trigger_flag = check_trigger(target["box_rate"], target["xywh"], target["cls"], trigger_flag)
+                if trigger_flag[0]:
+                    # 判断是否在触发trigger
+                    im1 = plot_target_box(target_xyxy, im1, color=colors(0, True), line_thickness=2)
+                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + trigger_flag[1])
                 else:
                     im1 = plot_target_box(target_xyxy, im1, color=colors(0, True), line_thickness=2)
                     im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Targeting: " + target["cls"])
                 stream_log.append(frame_log)
 
             else:
-                # 如果没有目标
-                grasping_flag = check_grasp_null(grasping_flag)
-                if grasping_flag[0]:
-                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + grasping_flag[1])
+                # 如果没有预测出目标
+                trigger_flag = check_trigger_null(trigger_flag)
+                if trigger_flag[0]:
+                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + trigger_flag[1])
                 else:
                     im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="No Target")
                 stream_log.append(["None"])
 
-            im1 = text_on_img(im1, gn, zoom=[0.05, 0.1], color=[0,0,0], label="Frame " + str(frame_idx))
+            im1 = text_on_img(im1, gn, zoom=[0.05, 0.1], color=[0, 0, 0], label="Frame " + str(frame_idx))
+            im1 = text_on_img(im1, gn, zoom=[0.05, 0.2], color=[0, 0, 0], label="Flag on" if trigger_flag[0] else "Flag off")
 
             # 打印前向传播 + NMS 花费的时间
             print(f'{s}Done. ({t2 - t1:.3f}s)')
@@ -268,10 +268,10 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
     print('64_mouse:', class_score_log[64, :])
     print(f'Done. ({time.time() - t0:.3f}s)')
 
-    save_score('runs/bottle_score.txt', 39, class_score_log)
-    save_score('runs/cup_score.txt', 41, class_score_log)
-    save_score('runs/spoon_score.txt', 44, class_score_log)
-    save_score('runs/mouse_score.txt', 64, class_score_log)
+    save_score(str(save_dir / 'bottle_score.txt'), 39, class_score_log)
+    save_score(str(save_dir / 'cup_score.txt'), 41, class_score_log)
+    save_score(str(save_dir / 'spoon_score.txt'), 44, class_score_log)
+    save_score(str(save_dir / 'mouse_score.txt'), 64, class_score_log)
 
 
 def parse_opt():
@@ -303,7 +303,7 @@ def parse_opt():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='weights/yolov5m.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='data/videos/510_3.mp4', help='file/dir/URL/glob, 0 for webcam')
+    parser.add_argument('--source', type=str, default='D:/SHIXU/MyProject/Dataset/clips/41cup/cup007.mp4', help='file/dir/URL/glob, 0 for webcam')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
@@ -327,6 +327,7 @@ def parse_opt():
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--prune-model', default=False, action='store_true', help='model prune')
     parser.add_argument('--fuse', default=False, action='store_true', help='fuse conv and bn')
+    parser.add_argument('--ground-truth', type=str, default='bottle', help='ground truth label of target')
     opt = parser.parse_args()
     return opt
 
