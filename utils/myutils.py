@@ -3,6 +3,12 @@ import cv2
 import numpy as np
 
 
+Box_thres = [0.8 for idx in range(80)]
+Box_thres[39] = 0.8
+Box_thres[41] = 0.7
+Box_thres[44] = 0.65
+Box_thres[64] = 0.5
+
 def get_centraloffset(xyxy, gn, normalize=False):
     """
     计算的是边界框中心与整个画面中心的L2距离（默认为像素距离，normalize后为归一化的结果），其中
@@ -45,31 +51,33 @@ def get_box_size(xywh):
     size = max(xywh[2], xywh[3])
     return size
 
-def check_grasp(box_rate, cls, grasping_flag, x=1):
-    if grasping_flag[0]:  # 上一时刻是抓的状态
-        if cls == grasping_flag[1]:  # 如果还是要抓的目标
-            if box_rate > x:  # 还在接近
-                grasping_flag[0] = True
+def check_trigger(box_rate, xywh, cls, trigger_flag, x=1):
+    # box_bool表示三个条件：框阈值比，框x位置，框y位置。x位置严格，y位置可以相对宽松一点
+    box_bool = box_rate > x and 0.4 < xywh[0] < 0.6 and 0.3 < xywh[1] < 0.7
+    if trigger_flag[0]:  # 上一时刻是抓的状态
+        if cls == trigger_flag[1]:  # 如果还是要抓的目标
+            if box_bool:  # 还在接近
+                trigger_flag[0] = True
             else:  # 已经离开了
-                grasping_flag[0] = False
-                grasping_flag[1] = "None"
+                trigger_flag[0] = False
+                trigger_flag[1] = "None"
         else:  # 检测到了其他东西
-            grasping_flag[0] = True
+            trigger_flag[0] = True
     else:  # 上一时刻不是抓取状态
-        if box_rate > x:  # 新的目标进入抓取状态
-            grasping_flag[0] = True
-            grasping_flag[1] = cls
+        if box_bool:  # 新的目标进入抓取状态
+            trigger_flag[0] = True
+            trigger_flag[1] = cls
         else:  # 还在瞄准
-            grasping_flag[0] = False
-            grasping_flag[1] = "None"
-    return grasping_flag
+            trigger_flag[0] = False
+            trigger_flag[1] = "None"
+    return trigger_flag
 
-def check_grasp_null(grasping_flag):
-    if grasping_flag[0]:  # 上一时刻是抓的状态
-        grasping_flag[0] = True
+def check_trigger_null(trigger_flag):
+    if trigger_flag[0]:  # 上一时刻是抓的状态
+        trigger_flag[0] = True
     else:  # 上一时刻不是抓取状态
-        grasping_flag[0] = False
-    return grasping_flag
+        trigger_flag[0] = False
+    return trigger_flag
 
 
 def plot_target_box(x, im, color=(128, 128, 128), label=None, line_thickness=2):
@@ -116,6 +124,15 @@ def save_score(path, cls, class_score_log):
     for value in class_score_log[cls, :]:
         value = value.item()
         filename.write(str(value) + '\n')
+    filename.close()
+    pass
+
+def save_eval(path, target, cls):
+    filename = open(path, 'a')
+    if target == cls:
+        filename.write(str(1) + '\n')
+    else:
+        filename.write(str(0) + '\n')
     filename.close()
     pass
 
