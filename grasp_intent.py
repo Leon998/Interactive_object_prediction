@@ -195,13 +195,12 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                 im1 = info_on_img(im0, gn, zoom=[0.45, 0.95], label="Box_size: " + str(round(target["box_size"], 3)))
                 im1 = info_on_img(im1, gn, zoom=[0.75, 0.95], label="Box_rate: " + str(round(target["box_rate"], 3)))
                 im1 = info_on_img(im1, gn, zoom=[0.75, 0.85], label="Score: " + str(round(target["score"].item(), 3)))
+                im1 = plot_target_box(target_xyxy, im1, color=colors(0, True), line_thickness=2)
                 trigger_flag = check_trigger(target["box_rate"], target["xywh"], target["cls"], trigger_flag)
                 if trigger_flag[0]:
                     # 判断是否在触发trigger
-                    im1 = plot_target_box(target_xyxy, im1, color=colors(0, True), line_thickness=2)
                     im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + trigger_flag[1])
                 else:
-                    im1 = plot_target_box(target_xyxy, im1, color=colors(0, True), line_thickness=2)
                     im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Targeting: " + target["cls"])
                 stream_log.append(frame_log)
 
@@ -215,6 +214,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                 stream_log.append(["None"])
 
             im1 = text_on_img(im1, gn, zoom=[0.05, 0.1], color=[0, 0, 0], label="Frame " + str(frame_idx))
+            # 记录当前帧Trigger_flag的状态
             im1 = text_on_img(im1, gn, zoom=[0.05, 0.2], color=[0, 0, 0], label="Flag on" if trigger_flag[0] else "Flag off")
 
             # 打印前向传播 + NMS 花费的时间
@@ -259,19 +259,10 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
         strip_optimizer(weights)  # update model (to fix SourceChangeWarning)
 
     # 打印预测的总时间
-
-
     print(frame_idx)
-    print('39_bottle:', class_score_log[39, :])
-    print('41_cup:', class_score_log[41, :])
-    print('44_spoon:', class_score_log[44, :])
-    print('64_mouse:', class_score_log[64, :])
     print(f'Done. ({time.time() - t0:.3f}s)')
-
-    save_score(str(save_dir / 'bottle_score.txt'), 39, class_score_log)
-    save_score(str(save_dir / 'cup_score.txt'), 41, class_score_log)
-    save_score(str(save_dir / 'spoon_score.txt'), 44, class_score_log)
-    save_score(str(save_dir / 'mouse_score.txt'), 64, class_score_log)
+    # 把所有class都保存到file
+    save_score_to_file(save_dir, class_score_log)
 
 
 def parse_opt():
@@ -303,7 +294,7 @@ def parse_opt():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='weights/yolov5m.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='D:/SHIXU/MyProject/Dataset/clips/41cup/cup007.mp4', help='file/dir/URL/glob, 0 for webcam')
+    parser.add_argument('--source', type=str, default='D:/SHIXU/MyProject/Dataset/clips/41cup/cup002.mp4', help='file/dir/URL/glob, 0 for webcam')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
@@ -318,7 +309,7 @@ def parse_opt():
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--update', action='store_true', help='update all models')
-    parser.add_argument('--project', default='runs/detect', help='save results to project/name')
+    parser.add_argument('--project', default='runs/grasp_intent', help='save results to project/name')
     parser.add_argument('--name', default='exp', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--line-thickness', default=2, type=int, help='bounding box thickness (pixels)')
