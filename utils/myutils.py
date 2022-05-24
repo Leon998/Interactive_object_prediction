@@ -4,10 +4,12 @@ import numpy as np
 
 
 Box_thres = [0.8 for idx in range(80)]
-Box_thres[39] = 0.8
-Box_thres[41] = 0.7
-Box_thres[44] = 0.65
-Box_thres[64] = 0.5
+Box_thres[39] = 0.8  # bottle
+Box_thres[41] = 0.7  # cup
+Box_thres[44] = 0.6  # spoon
+Box_thres[49] = 0.5  # orange
+Box_thres[64] = 0.5  # mouse
+Box_thres[76] = 0.5  # scissors
 
 def get_centraloffset(xyxy, gn, normalize=False):
     """
@@ -53,7 +55,7 @@ def get_box_size(xywh):
 
 def check_trigger(box_rate, xywh, cls, trigger_flag, x=1):
     # box_bool表示三个条件：框阈值比，框x位置，框y位置。x位置严格，y位置可以相对宽松一点
-    box_bool = box_rate > x and 0.4 < xywh[0] < 0.6 and 0.3 < xywh[1] < 0.7
+    box_bool = box_rate > x and 0.33 < xywh[0] < 0.66 and 0.33 < xywh[1] < 0.66
     if trigger_flag[0]:  # 上一时刻是抓的状态
         if cls == trigger_flag[1]:  # 如果还是要抓的目标
             if box_bool:  # 还在接近
@@ -119,7 +121,24 @@ def info_on_img(im, gn, zoom, color=[0,0,255], label=None, line_thickness=2):
     img = cv2.putText(im, label, (d1[0], d1[1]), 0, scale, color, thickness=tf + 1, lineType=cv2.LINE_AA)
     return img
 
+def save_eval(path, target, cls):
+    """
+    在eval_seq类脚本中，用于保存序列中准确预测情况的函数
+    """
+    filename = open(path, 'a')
+    if target == cls:  # 预测正确
+        filename.write(str(1) + '\n')
+    elif target == "None":  # 啥都没预测出来
+        filename.write(str(0) + '\n')
+    else:  # 预测错误
+        filename.write(str(-1) + '\n')
+    filename.close()
+    pass
+
 def save_score(path, cls, class_score_log):
+    """
+    保存单个class的score到file
+    """
     filename = open(path, 'w')
     for value in class_score_log[cls, :]:
         value = value.item()
@@ -127,14 +146,17 @@ def save_score(path, cls, class_score_log):
     filename.close()
     pass
 
-def save_eval(path, target, cls):
-    filename = open(path, 'a')
-    if target == cls:
-        filename.write(str(1) + '\n')
-    else:
-        filename.write(str(0) + '\n')
-    filename.close()
-    pass
+def save_score_to_file(save_dir, class_score_log):
+    """
+    把多个class汇集到一起保存到file
+    """
+    save_score(str(save_dir / 'bottle_score.txt'), 39, class_score_log)
+    save_score(str(save_dir / 'cup_score.txt'), 41, class_score_log)
+    save_score(str(save_dir / 'spoon_score.txt'), 44, class_score_log)
+    save_score(str(save_dir / 'orange_score.txt'), 49, class_score_log)
+    save_score(str(save_dir / 'mouse_score.txt'), 64, class_score_log)
+    save_score(str(save_dir / 'scissors_score.txt'), 76, class_score_log)
+
 
 def CLS(result_log):
     """
