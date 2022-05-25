@@ -121,19 +121,43 @@ def info_on_img(im, gn, zoom, color=[0,0,255], label=None, line_thickness=2):
     img = cv2.putText(im, label, (d1[0], d1[1]), 0, scale, color, thickness=tf + 1, lineType=cv2.LINE_AA)
     return img
 
-def save_eval(path, target, cls):
+def norm_prob(score_list):
+    prob_list = []
+    for i in range(len(score_list)):
+        prob_list.append(round(score_list[i].item() / (sum(score_list)).item(), 4))
+    return max(prob_list)
+
+def save_eval_seq(path, target, cls, prob):
     """
     在eval_seq类脚本中，用于保存序列中准确预测情况的函数
     """
     filename = open(path, 'a')
     if target == cls:  # 预测正确
-        filename.write(str(1) + '\n')
+        filename.write(str(prob) + '\n')
     elif target == "None":  # 啥都没预测出来
         filename.write(str(0) + '\n')
     else:  # 预测错误
-        filename.write(str(-1) + '\n')
+        filename.write(str(0 - prob) + '\n')
     filename.close()
-    pass
+
+def save_eval_instance(path, target, cls):
+    """
+    在eval_instance类脚本中，用于保存整体预测情况的函数
+    """
+    filename = open(path, 'a')
+    if target == cls:  # 预测正确
+        filename.write(str(1) + '\n')
+    else:  # 预测错误
+        filename.write(str(0) + '\n')
+    filename.close()
+
+def save_eval_grasp(path, frame_idx):
+    """
+    在eval_grasp类脚本中，用于保存预测抓取状态情况的函数
+    """
+    filename = open(path, 'a')
+    filename.write(str(frame_idx) + ' ' + str(1) + '\n')
+    filename.close()
 
 def save_score(path, cls, class_score_log):
     """
@@ -144,7 +168,6 @@ def save_score(path, cls, class_score_log):
         value = value.item()
         filename.write(str(value) + '\n')
     filename.close()
-    pass
 
 def save_score_to_file(save_dir, class_score_log):
     """
