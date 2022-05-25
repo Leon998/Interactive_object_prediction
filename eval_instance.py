@@ -200,6 +200,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                 if trigger_flag[0]:
                     # 判断是否在触发trigger
                     im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + trigger_flag[1])
+                    save_eval_instance(str(save_dir / 'eval_instance.txt'), target["cls"], ground_truth)
                 else:
                     im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Targeting: " + target["cls"])
                 stream_log.append(frame_log)
@@ -294,7 +295,7 @@ def parse_opt():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='weights/yolov5m.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='D:/SHIXU/MyProject/Dataset/clips/41cup/012.mp4', help='file/dir/URL/glob, 0 for webcam')
+    parser.add_argument('--source', type=str, default='D:/SHIXU/MyProject/Dataset/clips/41cup/011.mp4', help='file/dir/URL/glob, 0 for webcam')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
@@ -309,7 +310,7 @@ def parse_opt():
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--update', action='store_true', help='update all models')
-    parser.add_argument('--project', default='runs/grasp_intent', help='save results to project/name')
+    parser.add_argument('--project', default='runs/eval_instance', help='save results to project/name')
     parser.add_argument('--name', default='exp', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--line-thickness', default=2, type=int, help='bounding box thickness (pixels)')

@@ -138,6 +138,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
         frame_log = []
         # 记录图片里每个目标得分的列表
         score_list = []
+
         for i, det in enumerate(pred):  # detections per image
             if webcam:
                 p, s, im0, frame = path[i], f'{i}: ', im0s[i].copy(), dataset.count
@@ -174,8 +175,8 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                     score = box_rate / coffset  # 计分score
                     # 记录当前这个种类的特征
                     frame_log.append(
-                        {"cls": names[int(cls)], "conf": conf, "xyxy": xyxy, "xywh": xywh, "coffset": coffset, "box_rate": box_rate,
-                         "box_size": box_size, "score": score})
+                        {"cls": names[int(cls)], "conf": conf, "xyxy": xyxy, "xywh": xywh, "coffset": coffset,
+                         "box_rate": box_rate, "box_size": box_size, "score": score})
                     score_list.append(score)  # score_list每帧都更新
                     # 每次直接对应int(cls)的那个class_score_log进行append操作
                     if score >= class_score_log[int(cls), :][frame_idx]:
@@ -188,7 +189,17 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
 
                 # =====================================单个object检测结束================================= #
                 target_idx = score_list.index(max(score_list))  # 这一步可以修改成voting之类的方式
+                # # softmax计算概率
+                # softmax = torch.nn.Softmax(dim=0)  # 使用softmax表示概率
+                # prob_list = softmax(torch.tensor(score_list))
+                # prob = prob_list.max().item()
+                # prob = round(prob, 4)
+
+                # 归一法计算概率
+                prob = norm_prob(score_list)
                 target = frame_log[target_idx]
+                # 这里是判断是否预测对了target
+                save_eval_seq(str(save_dir / 'eval_seq.txt'), target["cls"], ground_truth, prob)
                 target_xyxy = target["xyxy"]
                 im1 = info_on_img(im0, gn, zoom=[0.45, 0.9], label="Box_x_loc: " + str(round(target["xywh"][0], 3)))
                 im1 = info_on_img(im1, gn, zoom=[0.75, 0.9], label="Box_y_loc: " + str(round(target["xywh"][1], 3)))
@@ -196,26 +207,16 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                 im1 = info_on_img(im1, gn, zoom=[0.75, 0.95], label="Box_rate: " + str(round(target["box_rate"], 3)))
                 im1 = info_on_img(im1, gn, zoom=[0.75, 0.85], label="Score: " + str(round(target["score"].item(), 3)))
                 im1 = plot_target_box(target_xyxy, im1, color=colors(0, True), line_thickness=2)
-                trigger_flag = check_trigger(target["box_rate"], target["xywh"], target["cls"], trigger_flag)
-                if trigger_flag[0]:
-                    # 判断是否在触发trigger
-                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + trigger_flag[1])
-                else:
-                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Targeting: " + target["cls"])
+                im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Targeting: " + target["cls"])
                 stream_log.append(frame_log)
 
             else:
                 # 如果没有预测出目标
-                trigger_flag = check_trigger_null(trigger_flag)
-                if trigger_flag[0]:
-                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="Grasping " + trigger_flag[1])
-                else:
-                    im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="No Target")
+                save_eval_seq(str(save_dir / 'eval_seq.txt'), "None", ground_truth, 0)
+                im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="No Target")
                 stream_log.append(["None"])
 
-            im1 = text_on_img(im1, gn, zoom=[0.05, 0.1], color=[0, 0, 0], label="Frame " + str(frame_idx))
-            # 记录当前帧Trigger_flag的状态
-            im1 = text_on_img(im1, gn, zoom=[0.05, 0.2], color=[0, 0, 0], label="Flag on" if trigger_flag[0] else "Flag off")
+            im1 = text_on_img(im1, gn, zoom=[0.05, 0.1], color=[0,0,0], label="Frame " + str(frame_idx))
 
             # 打印前向传播 + NMS 花费的时间
             print(f'{s}Done. ({t2 - t1:.3f}s)')
@@ -266,32 +267,6 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
 
 
 def parse_opt():
-    """
-    opt参数解析
-    weights: 模型的权重地址 默认 weights/best.pt
-    source: 测试数据文件(图片或视频)的保存路径 默认data/images
-    imgsz: 网络输入图片的大小 默认640
-    conf-thres: object置信度阈值 默认0.25
-    iou-thres: 做nms的iou阈值 默认0.45
-    max-det: 每张图片最大的目标个数 默认1000
-    device: 设置代码执行的设备 cuda device, i.e. 0 or 0,1,2,3 or cpu
-    view-img: 是否展示预测之后的图片或视频 默认False
-    save-txt: 是否将预测的框坐标以txt文件格式保存 默认True 会在runs/detect/expn/labels下生成每张图片预测的txt文件
-    save-conf: 是否保存预测每个目标的置信度到预测tx文件中 默认True
-    save-crop: 是否需要将预测到的目标从原图中扣出来 剪切好 并保存 会在runs/detect/expn下生成crops文件，将剪切的图片保存在里面  默认False
-    nosave: 是否不要保存预测后的图片  默认False 就是默认要保存预测后的图片
-    classes: 在nms中是否是只保留某些特定的类 默认是None 就是所有类只要满足条件都可以保留
-    agnostic-nms: 进行nms是否也除去不同类别之间的框 默认False
-    augment: 预测是否也要采用数据增强 TTA
-    update: 是否将optimizer从ckpt中删除  更新模型  默认False
-    project: 当前测试结果放在哪个主文件夹下 默认runs/detect
-    name: 当前测试结果放在run/detect下的文件名  默认是exp
-    exist-ok: 是否存在当前文件 默认False 一般是 no exist-ok 连用  所以一般都要重新创建文件夹
-    line-thickness: 画框的框框的线宽  默认是 3
-    hide-labels: 画出的框框是否需要隐藏label信息 默认False
-    hide-conf: 画出的框框是否需要隐藏conf信息 默认False
-    half: 是否使用半精度 Float16 推理 可以缩短推理时间 但是默认是False
-    """
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='weights/yolov5m.pt', help='model.pt path(s)')
     parser.add_argument('--source', type=str, default='D:/SHIXU/MyProject/Dataset/clips/41cup/012.mp4', help='file/dir/URL/glob, 0 for webcam')
@@ -309,7 +284,7 @@ def parse_opt():
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--update', action='store_true', help='update all models')
-    parser.add_argument('--project', default='runs/grasp_intent', help='save results to project/name')
+    parser.add_argument('--project', default='runs/eval_seq', help='save results to project/name')
     parser.add_argument('--name', default='exp', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--line-thickness', default=2, type=int, help='bounding box thickness (pixels)')
