@@ -111,6 +111,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
     # class_score_lod: 80×n维的列表，表示80个类别的得分记录
     stream_log = []
     class_score_log = np.zeros((80, 1))
+    step = 5  # 累积投票的时候，往前看几步
     new_frame = np.zeros(80)
     frame_idx = 0
     trigger_flag = [False, "None"]
@@ -174,9 +175,9 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                     score = box_rate / coffset  # 计分score
                     # 记录当前这个种类的特征
                     frame_log.append(
-                        {"cls": names[int(cls)], "conf": conf, "xyxy": xyxy, "xywh": xywh, "coffset": coffset, "box_rate": box_rate,
+                        {"cls": names[int(cls)], "cls_num": int(cls), "conf": conf, "xyxy": xyxy, "xywh": xywh, "coffset": coffset, "box_rate": box_rate,
                          "box_size": box_size, "score": score})
-                    score_list.append(score)  # score_list每帧都更新
+                    score_list.append(score)  # score_list每帧都更新，保持了score_list和frame_log的目标索引一样
                     # 每次直接对应int(cls)的那个class_score_log进行append操作
                     if score >= class_score_log[int(cls), :][frame_idx]:
                         class_score_log[int(cls), :][frame_idx] = score
@@ -187,7 +188,13 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                         plot_one_box(xyxy, im0, label=label, color=colors(c, True), line_thickness=line_thickness)
 
                 # =====================================单个object检测结束================================= #
-                target_idx = score_list.index(max(score_list))  # 这一步可以修改成voting之类的方式
+
+                frame_idx = frame_idx
+                if frame_idx < step:
+                    target_idx = score_list.index(max(score_list))  # 注意这里是因为之前保持了score_list和frame_log的目标索引是一样的
+                else:
+                    target_idx = vote_score(frame_log, class_score_log, step=step)  # 连续step帧累积投票
+
                 target = frame_log[target_idx]
                 target_xyxy = target["xyxy"]
                 im1 = info_on_img(im0, gn, zoom=[0.45, 0.9], label="Box_x_loc: " + str(round(target["xywh"][0], 3)))
@@ -294,7 +301,7 @@ def parse_opt():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='weights/yolov5m.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='D:/SHIXU/MyProject/Dataset/clips/41cup/012.mp4', help='file/dir/URL/glob, 0 for webcam')
+    parser.add_argument('--source', type=str, default='D:/SHIXU/MyProject/Dataset/clips/76scissors/test.mp4', help='file/dir/URL/glob, 0 for webcam')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
