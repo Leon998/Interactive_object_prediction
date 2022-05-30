@@ -53,6 +53,23 @@ def get_box_size(xywh):
     size = max(xywh[2], xywh[3])
     return size
 
+def vote_score(frame_log, class_score_log, step=3):
+    class_score_seq = np.zeros((len(frame_log), step))
+    # class_score_seq是累积score矩阵，用来记录当前帧的排布，后续会联系上下文累积成sequence，但是索引保持与frame_log一致
+    for i in range(len(frame_log)):
+        cls = frame_log[i]["cls_num"]  # 提取出当前帧每个目标的类别索引（类别cls）
+        class_score_seq[i] = class_score_log[cls, -step:]  # 累积score矩阵直接从类别score记录矩阵中找对应类别cls的step步score情况
+    score_sum = class_score_seq.sum(axis=1)  # 直接加和
+    # target_idx = score_sum.argmax()  # 找出最大的那个索引（弃用）（注意这里如果有多个相同类别的目标的话，只找得出数字更小的那个索引）
+    target_idx = np.argwhere(score_sum == score_sum.max())
+    target_idx = np.array(target_idx).reshape(-1).tolist()  # 经过这两步，就算有相同类别的目标，它们的索引也会被找出来
+    coffset = []
+    for i in target_idx:
+        coffset.append(frame_log[i]["coffset"])
+    idx = coffset.index(min(coffset))  # 找出相同类别的目标中，里中心最近的那一个，这里的idx是索引的索引
+    target_idx = target_idx[idx]  # 获得真实索引（对于frame_log而言的目标索引）
+    return target_idx
+
 def check_trigger(box_rate, xywh, cls, trigger_flag, x=1):
     # box_bool表示三个条件：框阈值比，框x位置，框y位置。x位置严格，y位置可以相对宽松一点
     box_bool = box_rate > x and 0.33 < xywh[0] < 0.66 and 0.33 < xywh[1] < 0.66
