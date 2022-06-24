@@ -114,7 +114,8 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
     new_frame = np.zeros(80)
     frame_idx = 0
     trigger_flag = [False, "None"]
-
+    eval_seq = []
+    eval_seq_path = str(save_dir / 'eval_seq.txt')
 
     for path, img, im0s, vid_cap in dataset:
         # 分数记录
@@ -199,7 +200,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
                 prob = norm_prob(score_list)
                 target = frame_log[target_idx]
                 # 这里是判断是否预测对了target
-                save_eval_seq(str(save_dir / 'eval_seq.txt'), target["cls"], ground_truth, prob)
+                save_eval_seq(eval_seq, target["cls"], ground_truth, prob)
                 target_xyxy = target["xyxy"]
                 im1 = info_on_img(im0, gn, zoom=[0.45, 0.9], label="Box_x_loc: " + str(round(target["xywh"][0], 3)))
                 im1 = info_on_img(im1, gn, zoom=[0.75, 0.9], label="Box_y_loc: " + str(round(target["xywh"][1], 3)))
@@ -212,7 +213,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
 
             else:
                 # 如果没有预测出目标
-                save_eval_seq(str(save_dir / 'eval_seq.txt'), "None", ground_truth, 0)
+                save_eval_seq(eval_seq, "None", ground_truth, 0)
                 im1 = text_on_img(im1, gn, zoom=[0.05, 0.95], label="No Target")
                 stream_log.append(["None"])
 
@@ -262,6 +263,12 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
     # 打印预测的总时间
     print(frame_idx)
     print(f'Done. ({time.time() - t0:.3f}s)')
+    # 保存seq评估，并保持长度一致
+    equal_eval_seq = equal_len(eval_seq)
+    filename = open(eval_seq_path, 'a')
+    for i in equal_eval_seq:
+        filename.write(str(i) + '\n')
+    filename.close()
     # 把所有class都保存到file
     save_score_to_file(save_dir, class_score_log)
 
@@ -269,7 +276,7 @@ def run(weights='weights/yolov5m.pt',  # 权重文件地址 默认 weights/best.
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='weights/yolov5m.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='D:/SHIXU/MyProject/Dataset/clips/41cup/012.mp4', help='file/dir/URL/glob, 0 for webcam')
+    parser.add_argument('--source', type=str, default='D:/SHIXU/MyProject/Dataset/clips/41cup/003.mp4', help='file/dir/URL/glob, 0 for webcam')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
