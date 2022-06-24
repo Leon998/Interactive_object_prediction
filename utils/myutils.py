@@ -54,14 +54,14 @@ def get_box_size(xywh):
     return size
 
 def vote_score(frame_log, class_score_log, step=3):
-    class_score_seq = np.zeros((len(frame_log), step))
-    # class_score_seq是累积score矩阵，用来记录当前帧的排布，后续会联系上下文累积成sequence，但是索引保持与frame_log一致
+    class_score_vote = np.zeros((len(frame_log), step))
+    # class_score_vote是累积连续step步的score矩阵，用来记录当前帧的排布，后续会联系上下文累积成sequence，但是索引保持与frame_log一致
     for i in range(len(frame_log)):
         cls = frame_log[i]["cls_num"]  # 提取出当前帧每个目标的类别索引（类别cls）
-        class_score_seq[i] = class_score_log[cls, -step:]  # 累积score矩阵直接从类别score记录矩阵中找对应类别cls的step步score情况
-    score_sum = class_score_seq.sum(axis=1)  # 直接加和
-    # target_idx = score_sum.argmax()  # 找出最大的那个索引（弃用）（注意这里如果有多个相同类别的目标的话，只找得出数字更小的那个索引）
-    target_idx = np.argwhere(score_sum == score_sum.max())
+        class_score_vote[i] = class_score_log[cls, -step:]  # 累积score矩阵直接从类别score记录矩阵中找对应类别cls的step步score情况
+    score_vote_sum = class_score_vote.sum(axis=1)  # 直接加和，得到的score_vote_sum是一个数组
+    # target_idx = score_vote_sum.argmax()  # 找出最大的那个索引（弃用）（注意这里如果有多个相同类别的目标的话，只找得出数字更小的那个索引）
+    target_idx = np.argwhere(score_vote_sum == score_vote_sum.max())
     target_idx = np.array(target_idx).reshape(-1).tolist()  # 经过这两步，就算有相同类别的目标，它们的索引也会被找出来
     coffset = []
     for i in target_idx:
@@ -144,18 +144,25 @@ def norm_prob(score_list):
         prob_list.append(round(score_list[i].item() / (sum(score_list)).item(), 4))
     return max(prob_list)
 
-def save_eval_seq(path, target, cls, prob):
+def equal_len(seq, length=75):
+    new_seq = [0] * length
+    if len(seq)>=length:
+        new_seq[:] = seq[-length:]
+    else:
+        new_seq[length-len(seq):] = seq[:]
+    return new_seq
+
+def save_eval_seq(eval_seq, target, cls, prob):
     """
     在eval_seq类脚本中，用于保存序列中准确预测情况的函数
     """
-    filename = open(path, 'a')
     if target == cls:  # 预测正确
-        filename.write(str(prob) + '\n')
+        eval_seq.append(prob)
     elif target == "None":  # 啥都没预测出来
-        filename.write(str(0) + '\n')
+        eval_seq.append(0)
     else:  # 预测错误
-        filename.write(str(0 - prob) + '\n')
-    filename.close()
+        eval_seq.append(0-prob)
+    return eval_seq
 
 def save_eval_instance(path, target, cls):
     """
